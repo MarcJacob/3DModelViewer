@@ -1,0 +1,16 @@
+This is a work-in-progress general-purpose 3D model viewer.
+
+The goal of the project is to build a command-line-usable tool to easily inspect a 3D model under one of the common formats.
+Doing so, it should be as easy as possible to port to any platform through a strong layer of abstraction between the logic and the platform resources.
+
+This is built for me to learn modern C++ programming. Coming from the video game industry, our way of writing C / C++ Code is a little insular and specific,
+picking and choosing C++ features we choose to allow or not on a project by project basis, not to mention the use of Game Engines that can impose constraints...
+
+This makes my own experience quite removed from a lot of the software industry, which is what I'm trying to correct.
+
+Structure of the program: 
+
+- Engine: Implementation files and headers for the "Engine" part of the code, which is definable as the platform-independent code managing the bulk of the logic behind rendering and reacting to input.
+- [Platform Name]: Platform implementation folder with both implementation files and internal headers.
+
+The code should never create dependencies between any part of the Engine and a specific platform !
