@@ -17,12 +17,39 @@ class Engine
 {
     public:
 
-    Engine() : m_platform(nullptr)
+    // Lifecycle states of the Engine.
+    enum class State
+    {
+        CONSTRUCTED, // Default state: Engine object has been constructed but isn't ready to run yet.
+        INITIALIZED, // Engine is initialized and can Tick.
+        RUNNING, // Engine has Ticked at least once successfully and can keep ticking.
+        SHUTTING_DOWN, // Engine is in the process of shutting down. Don't ask it for anything !
+        SHUTDOWN_COMPLETE // Engine has shut down and is no longer functionnal. Check shutdown reason for more. It may be re-initialized and started again.
+    };
+
+    // Possible broad reasons for shutting down.
+    enum class ShutdownReason
+    {
+        UNKNOWN, // No reason was passed before shutting down, meaning the shutting down process may have been avoided entirely. This is bad !
+        REQUESTED, // Normal shutdown, with everything going as expected. Usually triggered by user.
+        BAD_INIT, // Engine shut down before it even started because Initialization went wrong. Check initialization parameters.
+        RUNTIME_ERROR, // Engine shut down because a fatal (but non-program-crashing) error has happened.
+        PLATFORM_ERROR, // Engine shut down due to error on the Platform layer. This is detected by the Engine at start of Tick or during any routine safety check when
+        // handling platform resources.
+    };
+
+    Engine() : m_platform(nullptr), m_state(State::CONSTRUCTED), 
+    m_shouldShutdown(false), m_shutdownReason(ShutdownReason::UNKNOWN)
     {}
 
-    /// @brief Checks whether the Engine has been appropriately initialized.
-    /// @return Returns whether the Engine has been initialized correctly and is ready to display a model and tick.
-    bool IsInitialized() const;
+    // GETTERS
+
+    State GetState() const { return m_state; }
+
+    bool ShouldShutdown() const { return m_shouldShutdown; }
+    ShutdownReason GetShutdownReason() const { return m_shutdownReason; }
+
+    // FUNCTIONNALITY
 
     /// @brief Initializes the Engine to run on a Platform.
     /// @param platform Shared pointer to the underlying platform implementation.
@@ -39,10 +66,26 @@ class Engine
 
     /// @brief Shuts down the Engine, making it cleanly release any and all resources it might be using, and gracefully
     /// exit any sort of editing process.
-    void Shutdown();
+    void OnShutdown();
 
-    private:
+    /// @brief Triggers the engine to shutdown. Takes effect after the end of current Tick.
+    /// @param Reason Reason for shutdown. By default, "Requested" which means the shutdown was natural and nothing unexpected has happened.
+    /// #TODO(Marc): Since this will be the general-use function for shutting things down in error scenarios, we could plug this into the logging system
+    // so that an Error shutdown is triggered automatically when logging an Error message.
+    void TriggerShutdown(ShutdownReason Reason = ShutdownReason::REQUESTED) { m_shutdownReason = Reason; m_shouldShutdown = true; }
+
+private:
+
+    // Whether the engine has been flagged for shutting down. This will trigger the shutting down of the Engine and then the whole program
+    // after current frame ends.
+    bool m_shouldShutdown;
+    // The reason for shutting down. Unless currently shutting down, this is set to "UNKNOWN" meaning if it is still that after actual shut down, then
+    // something *very* wrong must have happened.
+    ShutdownReason m_shutdownReason;
     
+    // Current state of the engine's lifecycle.
+    State m_state;
+
     // Shared pointer to underlying Platform implementation.
     // Should only ever be accessed directly by the Engine class which acts as an interface to the platform
     // for the rest of the Engine Code.

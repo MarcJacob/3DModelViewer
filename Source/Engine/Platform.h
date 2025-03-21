@@ -6,6 +6,10 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include <memory>
+#include <thread>
+#include <functional>
+
 // #TODO: Declare all relevant types of platform resources here.
 
 /// @brief Abstract platform implementation class, to be implemented in Platform code and passed to the Engine on initialization.
@@ -15,17 +19,6 @@ class Platform
 {
 public:
 
-    Platform(): m_shouldShutdown(false)
-    {}
-
-    bool ShouldShutdown() const { return m_shouldShutdown; }
-
-    /// @brief Triggers the platform, and in turn the Engine, to shutdown. Takes effect after the end of current Tick.
-    void TriggerShutdown() { m_shouldShutdown = true; }
-
-private:
-
-    bool m_shouldShutdown;
 };
 
 #endif // PLATFORM_H
