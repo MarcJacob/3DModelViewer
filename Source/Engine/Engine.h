@@ -34,8 +34,7 @@ class Engine
         REQUESTED, // Normal shutdown, with everything going as expected. Usually triggered by user.
         BAD_INIT, // Engine shut down before it even started because Initialization went wrong. Check initialization parameters.
         RUNTIME_ERROR, // Engine shut down because a fatal (but non-program-crashing) error has happened.
-        PLATFORM_ERROR, // Engine shut down due to error on the Platform layer. This is detected by the Engine at start of Tick or during any routine safety check when
-        // handling platform resources.
+        PLATFORM, // Engine shut down due to error or signal on the Platform layer. Only used by shutdowns triggered from Platform code.
     };
 
     Engine() : m_platform(nullptr), m_state(State::CONSTRUCTED), 

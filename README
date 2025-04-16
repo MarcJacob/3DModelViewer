@@ -30,7 +30,7 @@ Specifications to follow, in no particular order:
 - The code should never create dependencies between any part of the Engine and a specific platform !
 - The Engine code should not make use of any static memory - the program's initial memory usage should only be what is expectable for a regular program on the target platform, along with whatever static memory the platform specific code wants to use.
 - The Engine CAN contain code that is *usable* by specific platforms but not others. That code however should still not depend on any specific platform.
-- Platform-specific global symbols and files have an appropriate prefix, even if a Namespace is used to wrap it. This is because even inside platform-specific code, we want to differentiate between engine code, standard library code and the actual platform-specific code.
+- Platform-specific global symbols and files have an appropriate prefix, even if a Namespace or Class is used to wrap it. This is because even inside platform-specific code, we want to differentiate between engine code, standard library code and the actual platform-specific code.
 - Platform-specific files should use snake_case while Engine files should use PascalCase.
 - While the exact way the Engine runs is up to the platform implementation, Engine code & especially interactions with the platform should be written so that it can run in a different thread.
 
