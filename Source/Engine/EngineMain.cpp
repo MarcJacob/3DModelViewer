@@ -1,4 +1,14 @@
 #include "Engine.h"
+#include "Platform.h"
+
+// Standard Platform functions
+
+void Platform::DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category&& cat)
+{
+    DisplayDebugMessage(DebugLogMessage{msgStr, cat});
+}
+
+// Engine implementation
 
 void Engine::Initialize(std::shared_ptr<Platform> platform)
 {
@@ -8,7 +18,7 @@ void Engine::Initialize(std::shared_ptr<Platform> platform)
 
 void Engine::Tick(double timeSeconds)
 {
-    
+
 }
 
 void Engine::OnShutdown()

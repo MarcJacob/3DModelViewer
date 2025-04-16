@@ -48,6 +48,9 @@ void Win32Platform::Win32_Update()
         TranslateMessage(&message);
         DispatchMessage(&message);
     }
+
+    Win32_FlushDebugLogQueue();
+    
 }
 
 bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, LPARAM lParam)
@@ -68,6 +71,46 @@ void Win32Platform::Win32_CloseWindow()
 {
     CloseWindow(Win32_MainWindowHandle);
     Win32_MainWindowHandle = NULL;
+}
+
+void Win32Platform::DisplayDebugMessage(DebugLogMessage&& message)
+{
+    std::lock_guard<std::mutex> queueLock(Mutex_DebugMessageQueue);
+    DebugMessageQueue.push(message);
+}
+
+void Win32Platform::Win32_FlushDebugLogQueue()
+{
+    std::lock_guard<std::mutex> messageQueueLock(Mutex_DebugMessageQueue);
+    while(!DebugMessageQueue.empty())
+    {
+        DebugLogMessage& message = DebugMessageQueue.front();
+
+        switch(message.LogCategory)
+        {
+            case(DebugLogMessage::Category::SUCCESS):
+                SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+            break;
+            default:
+            case(DebugLogMessage::Category::LOG):
+                SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+            break;
+            case(DebugLogMessage::Category::WARNING):
+                SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_RED);
+            break;
+            case(DebugLogMessage::Category::ERROR_NONFATAL):
+                SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED);
+            break;
+            case(DebugLogMessage::Category::ERROR_FATAL):
+                SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
+            break;
+        }
+        std::cout << message.LogMessage << "\n";
+        DebugMessageQueue.pop();
+    }
+
+    // Reset text attribute to default.
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
 }
 
 // WIN32 MAIN ENTRY POINT & STATIC DATA
@@ -235,30 +278,27 @@ PROGRAM_END:
     switch(Win32_Engine->GetShutdownReason())
     {
         case(Engine::ShutdownReason::REQUESTED):
-            std::cout << "Engine Shutdown on user request.\n";
+            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
             break;
         case(Engine::ShutdownReason::BAD_INIT):
-            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
-            std::cerr << "Engine Shutdown due to initialization failure ! Check initialization parameters.\n";
+            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
             break;
         case(Engine::ShutdownReason::RUNTIME_ERROR):
-            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
-            std::cerr << "Engine Shutdown due to runtime error ! Check previous messages for a fatal error.\n";
+            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
             break;
         case(Engine::ShutdownReason::PLATFORM):
-            SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), (FOREGROUND_RED | FOREGROUND_GREEN));
-            std::cerr << "Engine Shutdown by request of Platform.\n";
+            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
             break;
         default:
-            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
-            std::cerr << "Engine Shutdown reason unknown ! Something has gone very wrong.\n";
+            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
             break;
     }
 
     // #TODO: Platform-level shutdown reason.
 
+    Win32_Platform->Win32_FlushDebugLogQueue();
+
     // Fake getchar to pause the console at the end of the program.
-    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_INTENSITY);
     std::cout << "Program has ended. Press ENTER to continue.\n";
     std::getchar();
 

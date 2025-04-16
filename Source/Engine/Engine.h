@@ -8,8 +8,26 @@
 
 #include <memory>
 
+#include <string>
+
 // Abstract platform implementation forward declaration.
 class Platform;
+
+struct DebugLogMessage
+{
+    enum class Category
+    {
+        SUCCESS, // Message indicating something went well !
+        LOG, // Standard message indicating a fact that is in itself neither good or bad.
+        WARNING, // Standard message indicating something irregular / incorrect happened, but not in a way that will necessarily cause a problem.
+        ERROR_NONFATAL, // Message indicating something went wrong, but not to the point the program will require an Engine restart.
+        ERROR_FATAL // Message indicating something went *very* wrong to the point it will require a Engine restart. Logging in this category will trigger
+        // an Engine shutdown.
+    };
+
+    std::string LogMessage;
+    Category LogCategory;
+};
 
 /// @brief Main Engine class, to be linked to an abstract Platform Implementation object. 
 /// Uses Platform resources to display data from 3D asset file with a supported format.

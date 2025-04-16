@@ -9,6 +9,8 @@
 #define WIN32_LEAN_AND_MEAN // Only include the bare minimum from Windows to not pollute namespace.
 #include <Windows.h>
 
+#include <queue>
+
 #include "Engine/Platform.h"
 
 /// @brief The Win32 Platform is meant to run on a Windows 10 and later OS-operated machine. It is centered around a Window
@@ -40,6 +42,9 @@ public:
 
     bool Win32_IsMainWindowActive() const { return Win32_MainWindowHandle != NULL; }
 
+    // Triggers a flush of all Debug Log Messages in queue.
+    void Win32_FlushDebugLogQueue();
+
 private:
 
     /// @brief Triggers the Window to close. It needs to be initialized again to reappear.
@@ -50,6 +55,16 @@ private:
 
     // Handle to parent process.
     HINSTANCE Win32_ProcessHandle;
+
+// PLATFORM SERVICES IMPLEMENTATION
+protected:
+
+    virtual void DisplayDebugMessage(DebugLogMessage&& message) override;
+
+private:
+
+    std::mutex Mutex_DebugMessageQueue;
+    std::queue<DebugLogMessage> DebugMessageQueue;
 };
 
 #endif // WIN32_PLATFORM_H
