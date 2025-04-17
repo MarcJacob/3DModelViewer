@@ -57,8 +57,10 @@ private:
     HINSTANCE Win32_ProcessHandle;
 
 // PLATFORM SERVICES IMPLEMENTATION
-protected:
+public:
 
+    // Make sure Platform's overloads are visible in this scope for overload resolution.
+    using Platform::DisplayDebugMessage;
     virtual void DisplayDebugMessage(DebugLogMessage&& message) override;
 
 private:

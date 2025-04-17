@@ -278,19 +278,19 @@ PROGRAM_END:
     switch(Win32_Engine->GetShutdownReason())
     {
         case(Engine::ShutdownReason::REQUESTED):
-            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
+            Win32_Platform->DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
             break;
         case(Engine::ShutdownReason::BAD_INIT):
-            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
+            Win32_Platform->DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
             break;
         case(Engine::ShutdownReason::RUNTIME_ERROR):
-            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
+            Win32_Platform->DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
             break;
         case(Engine::ShutdownReason::PLATFORM):
-            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
+            Win32_Platform->DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
             break;
         default:
-            Win32_Platform->Platform::DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
+            Win32_Platform->DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
             break;
     }
 

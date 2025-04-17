@@ -21,11 +21,15 @@ class Platform
 {
 public:
 
-    // Asks the platform to display the passed Debug message on a platform-specific debug logging system, usually a console.
+    /// @brief Asks the platform to display the passed Debug message string & category on a platform-specific debug logging system, 
+    /// usually a console.
+    /// @param msgStr Character string to be displayed in the debug message.
+    /// @param cat Message category / severity.
     void DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category&& cat);
 
-protected:
-
+    /// @brief Asks the platform to display the passed Debug Message structure on a platform-specific debug logging system, 
+    /// usually a console.
+    /// @param msg DebugLogMessage structure to display.
     virtual void DisplayDebugMessage(DebugLogMessage&& msg) = 0;
 
 };
