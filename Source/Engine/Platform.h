@@ -25,7 +25,7 @@ public:
     /// usually a console.
     /// @param msgStr Character string to be displayed in the debug message.
     /// @param cat Message category / severity.
-    void DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category&& cat);
+    void DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category cat = DebugLogMessage::Category::LOG);
 
     /// @brief Asks the platform to display the passed Debug Message structure on a platform-specific debug logging system, 
     /// usually a console.

@@ -60,6 +60,8 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
         case(WM_QUIT):
         case(WM_CLOSE):
             // Close Main window, triggering the whole app to shut down.
+            DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
+                DebugLogMessage::Category::WARNING);
             Win32_CloseWindow();
             return true;
         default:
@@ -105,6 +107,8 @@ void Win32Platform::Win32_FlushDebugLogQueue()
                 SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
             break;
         }
+        // Use standard out to output all messages. Always add a line break (triggering a flush) to each message.
+        // #TODO(Marc): Add facility for multi-line and parameterized messages to be built on the Engine side.
         std::cout << message.LogMessage << "\n";
         DebugMessageQueue.pop();
     }
@@ -143,7 +147,7 @@ void Win32_EngineThreadFunc()
         Win32_Engine->Tick(0.01);
     }
 
-    // Shutdown Engine gracefully.
+    // Run Engine Shutdown Routine.
     Win32_Engine->OnShutdown();
 
     // Set Engine Shutdown Complete event.
@@ -208,12 +212,12 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
         freopen_s(reinterpret_cast<FILE**>(stderr), "CONERR$", "w", stderr);
         freopen_s(reinterpret_cast<FILE**>(stdin), "CONIN$", "r", stdin);
     }
-
-    std::cout << "Initializing Platform...\n";
     
     // Create Platform & Engine control objects.
     Win32_Platform = std::make_shared<Win32Platform>(instance);
     Win32_Engine = std::make_shared<Engine>();
+
+    Win32_Platform->DisplayDebugMessage("Initializing Platform...");
 
     // Create synchronization events.
     {
@@ -240,13 +244,14 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
         // If not, then shut everything down immediately by jumping to PROGRAM_END.
         if (!Win32_Platform->Win32_IsMainWindowActive())
         {
-            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
-            std::cerr << "Win32 Platform has failed to initialize !\n";
+            Win32_Platform->DisplayDebugMessage("Win32 Platform has failed to initialize !", DebugLogMessage::Category::ERROR_FATAL);
             goto PROGRAM_END;
         }
     }
 
-    std::cout << "Platform Initialized. Initializing & Starting Engine...\n";
+    Win32_Platform->DisplayDebugMessage("Platform Initialized !", DebugLogMessage::Category::SUCCESS);
+
+    Win32_Platform->DisplayDebugMessage("Initializing & Starting Engine...");
 
     // ENGINE STARTUP
     {
@@ -257,45 +262,22 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
         WaitForSingleObject(Win32_EngineInitCompleteEventHandle, INFINITE);
     }
 
-    // At this point, either both Platform & Engine will have appropriately initialized, or something went wrong.
-    // We can tell by whether the Engine has been flagged for Shutdown.
+    // If Engine has initialized appropriately, display a message. If not, the Engine thread will take care of
+    // indicating the failure as part of its standard shutdown routine.
     if (!Win32_Engine->ShouldShutdown())
     {
-        std::cout << "Platform and Engine initialized and running !\n";
-
-        // Join threads. At this point the process main thread will just be waiting for shutdown.
-        // #TOTHINK(Marc): Is that smart ? Maybe running a separate thread for Platform isn't very useful.
-        // Then again, threads are a very cheap and plentiful ressource on modern machines so it probably doesn't matter.
-        Win32_EngineThread.join();
-        Win32_PlatformThread.join();
+        Win32_Platform->DisplayDebugMessage("Engine initialized and running !", DebugLogMessage::Category::SUCCESS);
     }
+
+    // Join threads. At this point the process main thread will just be waiting for shutdown.
+    // #TOTHINK(Marc): Is that smart ? Maybe running a separate thread for Platform isn't very useful.
+    // Then again, threads are a very cheap and plentiful ressource on modern machines so it probably doesn't matter.
+    Win32_EngineThread.join();
+    Win32_PlatformThread.join();
 
 PROGRAM_END:
 
-    // End of program: output a message depending on shutdown reason for Engine & Platform.
-    // #NOTE(Marc): Yes, I cringed a little copy pasting SetConsoleTextAttribute like that. And it's not very thread safe or extendable.
-    // So... #TODO(Marc): Appropriate, non-cringe-enducing logging system with colors.
-    switch(Win32_Engine->GetShutdownReason())
-    {
-        case(Engine::ShutdownReason::REQUESTED):
-            Win32_Platform->DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
-            break;
-        case(Engine::ShutdownReason::BAD_INIT):
-            Win32_Platform->DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
-            break;
-        case(Engine::ShutdownReason::RUNTIME_ERROR):
-            Win32_Platform->DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
-            break;
-        case(Engine::ShutdownReason::PLATFORM):
-            Win32_Platform->DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
-            break;
-        default:
-            Win32_Platform->DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
-            break;
-    }
-
-    // #TODO: Platform-level shutdown reason.
-
+    // Final flush of the Win32 Platform's Debug Logging Queue so any messages left (sent as part of shutdowns) will be displayed. 
     Win32_Platform->Win32_FlushDebugLogQueue();
 
     // Fake getchar to pause the console at the end of the program.
