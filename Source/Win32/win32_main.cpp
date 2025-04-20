@@ -22,7 +22,6 @@ bool Win32Platform::Win32_InitWindow()
     windowClass.lpfnWndProc = &Win32_MsgProc;
     windowClass.lpszClassName = WIN32_WINDOW_CLASS_NAME;
     windowClass.style = CS_OWNDC;
-
     RegisterClass(&windowClass);
 
     Win32_MainWindowHandle = CreateWindow(WIN32_WINDOW_CLASS_NAME, L"Model Viewer", WS_VISIBLE | WS_OVERLAPPEDWINDOW,
@@ -35,6 +34,8 @@ bool Win32Platform::Win32_InitWindow()
         std::cerr << "Error when creating Win32 Main Window ! Error Code = " << errCode << "\n";
         return false;
     }
+
+    Win32_MainWindowDeviceContext = GetDC(Win32_MainWindowHandle);
 
     return true;
 }
@@ -63,6 +64,13 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
             DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
                 DebugLogMessage::Category::WARNING);
             Win32_CloseWindow();
+            return true;
+        case(WM_PAINT):
+            // Fill window with black
+            PAINTSTRUCT paint;
+            BeginPaint(Win32_MainWindowHandle, &paint);
+            FillRect(Win32_MainWindowDeviceContext, &paint.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+            EndPaint(Win32_MainWindowHandle, &paint);
             return true;
         default:
             return false;

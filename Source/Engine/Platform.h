@@ -31,7 +31,6 @@ public:
     /// usually a console.
     /// @param msg DebugLogMessage structure to display.
     virtual void DisplayDebugMessage(DebugLogMessage&& msg) = 0;
-
 };
 
 #endif // PLATFORM_H

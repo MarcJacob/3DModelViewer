@@ -18,6 +18,8 @@
 /// Uses CPU rendering through the GDI library (#TODO(Marc): Obviously this platform should support hardware acceleration.)
 class Win32Platform : public Platform
 {
+
+    // WIN32 Internal Platform Functionnality
 public:
 
     Win32Platform(HINSTANCE processHandle) : Platform(), Win32_ProcessHandle(processHandle)
@@ -52,6 +54,9 @@ private:
 
     // Handle to the main Window. NULL if inactive, any other value otherwise.
     HWND Win32_MainWindowHandle;
+
+    // Handle to WinGDI Device Context associated with Main Window for drawing.
+    HDC Win32_MainWindowDeviceContext;
 
     // Handle to parent process.
     HINSTANCE Win32_ProcessHandle;
