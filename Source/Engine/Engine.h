@@ -10,8 +10,8 @@
 
 #include <string>
 
-// Abstract platform implementation forward declaration.
-class Platform;
+// Abstract platform services forward declaration.
+class PlatformDebugger;
 
 struct DebugLogMessage
 {
@@ -55,7 +55,7 @@ class Engine
         PLATFORM, // Engine shut down due to error or signal on the Platform layer. Only used by shutdowns triggered from Platform code.
     };
 
-    Engine() : m_platform(nullptr), m_state(State::CONSTRUCTED), 
+    Engine() : m_platformDebugger(nullptr), m_state(State::CONSTRUCTED), 
     m_shouldShutdown(false), m_shutdownReason(ShutdownReason::UNKNOWN)
     {}
 
@@ -68,9 +68,11 @@ class Engine
 
     // FUNCTIONNALITY
 
-    /// @brief Initializes the Engine to run on a Platform.
-    /// @param platform Shared pointer to the underlying platform implementation.
-    void Initialize(std::shared_ptr<Platform> platform);
+    /// @brief Initializes the Engine to run a set of platform service implementations.
+    /// @param platform Shared pointer to the underlying platform debugger implementation.
+    /// @Note(Marc): Is it wise to make each "service" a separate parameter here ? Perhaps a structure combining them together would work better. I don't know the total amount
+    // of Service classes there will be yet so doing it might be premature.
+    void Initialize(std::shared_ptr<PlatformDebugger> platformDebugger);
 
     /// @brief Integrates the advancement of time for all time-related elements of the view,
     /// including animation and taking movement input into account.
@@ -106,7 +108,7 @@ private:
     // Shared pointer to underlying Platform implementation.
     // Should only ever be accessed directly by the Engine class which acts as an interface to the platform
     // for the rest of the Engine Code.
-    std::shared_ptr<Platform> m_platform;
+    std::shared_ptr<PlatformDebugger> m_platformDebugger;
 };
 
 #endif // ENGINE_H

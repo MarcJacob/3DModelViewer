@@ -7,17 +7,12 @@
 #define PLATFORM_H
 
 #include <memory>
-#include <thread>
-#include <functional>
-#include <mutex>
-
 #include "Engine.h"
 
-// #TODO: Declare all relevant types of platform resources here.
+/// Abstract platform implementation classes, to be implemented in Platform code and passed to the Engine on initialization.
+/// Their role is to give the Engine access to platform resources in a manner it can understand.
 
-/// @brief Abstract platform implementation class, to be implemented in Platform code and passed to the Engine on initialization.
-/// Gives the Engine access to platform resources in a manner it can understand.
-class Platform
+class PlatformDebugger
 {
 public:
 
@@ -28,7 +23,7 @@ public:
     void DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category cat = DebugLogMessage::Category::LOG);
 
     /// @brief Asks the platform to display the passed Debug Message structure on a platform-specific debug logging system, 
-    /// usually a console.
+    /// usually a console. Note: this may block the calling thread, but the platform should keep the potential blocking time very low.
     /// @param msg DebugLogMessage structure to display.
     virtual void DisplayDebugMessage(DebugLogMessage&& msg) = 0;
 };

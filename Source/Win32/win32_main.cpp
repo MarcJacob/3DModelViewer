@@ -5,6 +5,7 @@
 #include "win32_platform.h"
 #include "Engine/Engine.h"
 #include <iostream>
+#include <thread>
 
 // Forward decs & Defines
 
@@ -14,20 +15,26 @@ LRESULT CALLBACK Win32_MsgProc(HWND window, UINT msgType, WPARAM wParam, LPARAM 
 
 // WIN32 PLATFORM IMPLEMENTATION
 
+bool Win32Platform::Win32_InitSubsystems()
+{
+    m_debugger = std::make_shared<Win32PlatformDebugger>();
+    return true;
+}
+
 bool Win32Platform::Win32_InitWindow()
 {
     // Create window class if necessary and instantiate main window.
     WNDCLASS windowClass = {};
-    windowClass.hInstance = Win32_ProcessHandle;
+    windowClass.hInstance = m_processHandle;
     windowClass.lpfnWndProc = &Win32_MsgProc;
     windowClass.lpszClassName = WIN32_WINDOW_CLASS_NAME;
     windowClass.style = CS_OWNDC;
     RegisterClass(&windowClass);
 
-    Win32_MainWindowHandle = CreateWindow(WIN32_WINDOW_CLASS_NAME, L"Model Viewer", WS_VISIBLE | WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, Win32_ProcessHandle, NULL);
+    m_mainWindowHandle = CreateWindow(WIN32_WINDOW_CLASS_NAME, L"Model Viewer", WS_VISIBLE | WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, m_processHandle, NULL);
 
-    if (Win32_MainWindowHandle == NULL)
+    if (m_mainWindowHandle == NULL)
     {
         // Error when creating Main Window. Shut everything down.
         DWORD errCode = GetLastError();
@@ -35,7 +42,7 @@ bool Win32Platform::Win32_InitWindow()
         return false;
     }
 
-    Win32_MainWindowDeviceContext = GetDC(Win32_MainWindowHandle);
+    m_mainWindowDeviceContext = GetDC(m_mainWindowHandle);
 
     return true;
 }
@@ -44,13 +51,13 @@ void Win32Platform::Win32_Update()
 {
     // Poll messages
     MSG message;
-    while(PeekMessage(&message, Win32_MainWindowHandle, 0, 0, PM_REMOVE))
+    while(PeekMessage(&message, m_mainWindowHandle, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&message);
         DispatchMessage(&message);
     }
 
-    Win32_FlushDebugLogQueue();
+    m_debugger->Win32_FlushDebugLogQueue();
     
 }
 
@@ -61,16 +68,16 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
         case(WM_QUIT):
         case(WM_CLOSE):
             // Close Main window, triggering the whole app to shut down.
-            DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
+            m_debugger->DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
                 DebugLogMessage::Category::WARNING);
             Win32_CloseWindow();
             return true;
         case(WM_PAINT):
             // Fill window with black
             PAINTSTRUCT paint;
-            BeginPaint(Win32_MainWindowHandle, &paint);
-            FillRect(Win32_MainWindowDeviceContext, &paint.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
-            EndPaint(Win32_MainWindowHandle, &paint);
+            BeginPaint(m_mainWindowHandle, &paint);
+            FillRect(m_mainWindowDeviceContext, &paint.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
+            EndPaint(m_mainWindowHandle, &paint);
             return true;
         default:
             return false;
@@ -79,18 +86,23 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
 
 void Win32Platform::Win32_CloseWindow()
 {
-    CloseWindow(Win32_MainWindowHandle);
-    Win32_MainWindowHandle = NULL;
+    CloseWindow(m_mainWindowHandle);
+    m_mainWindowHandle = NULL;
 }
 
-void Win32Platform::DisplayDebugMessage(DebugLogMessage&& message)
+void Win32PlatformDebugger::DisplayDebugMessage(DebugLogMessage&& message)
 {
     std::lock_guard<std::mutex> queueLock(Mutex_DebugMessageQueue);
     DebugMessageQueue.push(message);
 }
 
-void Win32Platform::Win32_FlushDebugLogQueue()
+void Win32PlatformDebugger::Win32_FlushDebugLogQueue()
 {
+    // #NOTE(Marc): Using a single mutex and buffer both for feeding in messages and flushing to screen means that if the Engine or any other thread tries to request a message to
+    // be displayed, it will have to wait for however long it takes to flush every message to screen. I don't mind it for now, because the platform thread in charge of this should
+    // be quite short-looped which, outside cases where the Engine prints many messages sequentially, means the queue will never get too long anyway.
+    // If this were to change, I can think of multiple solutions: a single sort of "circular" buffer with a "consumption" and "production" cursor that can work in parallel, or
+    // some way to interrupt the flushing process if something is waiting for the mutex to be unlocked.
     std::lock_guard<std::mutex> messageQueueLock(Mutex_DebugMessageQueue);
     while(!DebugMessageQueue.empty())
     {
@@ -142,7 +154,7 @@ HANDLE Win32_EngineShutdownCompleteEventHandle; // Set when Engine is done shutt
 void Win32_EngineThreadFunc()
 {
     // Initialize Engine.
-    Win32_Engine->Initialize(std::dynamic_pointer_cast<Platform>(Win32_Platform));
+    Win32_Engine->Initialize(std::dynamic_pointer_cast<PlatformDebugger>(Win32_Platform->Win32_GetDebugger()));
 
     // Set Engine Init Complete event.
     SetEvent(Win32_EngineInitCompleteEventHandle);
@@ -225,7 +237,9 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
     Win32_Platform = std::make_shared<Win32Platform>(instance);
     Win32_Engine = std::make_shared<Engine>();
 
-    Win32_Platform->DisplayDebugMessage("Initializing Platform...");
+    Win32_Platform->Win32_InitSubsystems();
+
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Initializing Platform...");
 
     // Create synchronization events.
     {
@@ -252,14 +266,14 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
         // If not, then shut everything down immediately by jumping to PROGRAM_END.
         if (!Win32_Platform->Win32_IsMainWindowActive())
         {
-            Win32_Platform->DisplayDebugMessage("Win32 Platform has failed to initialize !", DebugLogMessage::Category::ERROR_FATAL);
+            Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Win32 Platform has failed to initialize !", DebugLogMessage::Category::ERROR_FATAL);
             goto PROGRAM_END;
         }
     }
 
-    Win32_Platform->DisplayDebugMessage("Platform Initialized !", DebugLogMessage::Category::SUCCESS);
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Platform Initialized !", DebugLogMessage::Category::SUCCESS);
 
-    Win32_Platform->DisplayDebugMessage("Initializing & Starting Engine...");
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Initializing & Starting Engine...");
 
     // ENGINE STARTUP
     {
@@ -274,7 +288,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
     // indicating the failure as part of its standard shutdown routine.
     if (!Win32_Engine->ShouldShutdown())
     {
-        Win32_Platform->DisplayDebugMessage("Engine initialized and running !", DebugLogMessage::Category::SUCCESS);
+        Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Engine initialized and running !", DebugLogMessage::Category::SUCCESS);
     }
 
     // Join threads. At this point the process main thread will just be waiting for shutdown.
@@ -286,7 +300,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
 PROGRAM_END:
 
     // Final flush of the Win32 Platform's Debug Logging Queue so any messages left (sent as part of shutdowns) will be displayed. 
-    Win32_Platform->Win32_FlushDebugLogQueue();
+    Win32_Platform->Win32_GetDebugger()->Win32_FlushDebugLogQueue();
 
     // Fake getchar to pause the console at the end of the program.
     std::cout << "Program has ended. Press ENTER to continue.\n";

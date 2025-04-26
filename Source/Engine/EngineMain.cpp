@@ -3,17 +3,17 @@
 
 // Standard Platform functions
 
-void Platform::DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category cat)
+void PlatformDebugger::DisplayDebugMessage(std::string&& msgStr, DebugLogMessage::Category cat)
 {
     DisplayDebugMessage(DebugLogMessage{msgStr, cat});
 }
 
 // Engine implementation
 
-void Engine::Initialize(std::shared_ptr<Platform> platform)
+void Engine::Initialize(std::shared_ptr<PlatformDebugger> platformDebugger)
 {
     // Initialize internal shared pointer to platform by copying the one passed.
-    m_platform = platform;
+    m_platformDebugger = platformDebugger;
 }
 
 void Engine::Tick(double timeSeconds)
@@ -27,19 +27,19 @@ void Engine::OnShutdown()
     switch(GetShutdownReason())
     {
         case(Engine::ShutdownReason::REQUESTED):
-            m_platform->DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
+            m_platformDebugger->DisplayDebugMessage("Engine Shutdown on user request.", DebugLogMessage::Category::LOG);
             break;
         case(Engine::ShutdownReason::BAD_INIT):
-            m_platform->DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
+            m_platformDebugger->DisplayDebugMessage("Engine Shutdown due to initialization failure ! Check initialization parameters.", DebugLogMessage::Category::ERROR_FATAL);
             break;
         case(Engine::ShutdownReason::RUNTIME_ERROR):
-            m_platform->DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
+            m_platformDebugger->DisplayDebugMessage("Engine Shutdown due to runtime error ! Check previous messages for a fatal error.", DebugLogMessage::Category::ERROR_NONFATAL);
             break;
         case(Engine::ShutdownReason::PLATFORM):
-            m_platform->DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
+            m_platformDebugger->DisplayDebugMessage("Engine Shutdown by request of Platform.", DebugLogMessage::Category::WARNING);
             break;
         default:
-            m_platform->DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
+            m_platformDebugger->DisplayDebugMessage("Engine Shutdown reason unknown ! Something has gone very wrong.", DebugLogMessage::Category::ERROR_FATAL);
             break;
     }
 }
