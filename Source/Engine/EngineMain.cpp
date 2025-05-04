@@ -10,10 +10,47 @@ void PlatformDebugger::DisplayDebugMessage(std::string&& msgStr, DebugLogMessage
 
 // Engine implementation
 
-void Engine::Initialize(std::shared_ptr<PlatformDebugger> platformDebugger)
+void Engine::Initialize(std::shared_ptr<PlatformDebugger> platformDebugger, std::shared_ptr<PlatformRenderer> platformRenderer)
 {
-    // Initialize internal shared pointer to platform by copying the one passed.
     m_platformDebugger = platformDebugger;
+    m_platformRenderer = platformRenderer;
+}
+
+void Engine::Update()
+{
+    // Run full Engine update: read input events, tick time-based elements, and update rendering.
+
+    //#TODO(Marc): Input handling.
+
+    Tick(0.01); // #TODO(Marc): Let's measure time so we can make Tick be real-time-based.
+
+    // #TEST: Draw a red line on screen.
+    std::shared_ptr<PlatformRenderer::MemoryMapDrawer> drawer = m_platformRenderer->AllocateFullDisplayDrawer();
+    if (drawer != nullptr)
+    {
+        uint16_t width, height;
+        width = drawer->GetWidth();
+        height = drawer->GetHeight();
+
+        Pixel_RGBA* pixelsBuffer = drawer->GetPixelBufferPtr();
+
+        // Let's draw a line at arbitrary coordinates.
+        for(int y = 200; y < 210; y++)
+        {
+            for(int x = 100; x < 500; x++)
+            {
+                pixelsBuffer[y * width + x].pixel = 0xFF0000FF;
+            }
+        }
+
+        // Once done, flag the drawer for drawing and discarding. #NOTE(Marc): Obviously we'd normally want to keep the same drawer around so long as
+        // screen resolution doesn't change, but such signals will probably be part of the input system which doesn't exist yet.
+        drawer->SetReadyToDraw();
+        drawer->Discard();
+    }
+
+    // Perform platform rendering update.
+    m_platformRenderer->RenderUpdate();
 }
 
 void Engine::Tick(double timeSeconds)

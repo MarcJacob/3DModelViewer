@@ -13,11 +13,17 @@
 
 LRESULT CALLBACK Win32_MsgProc(HWND window, UINT msgType, WPARAM wParam, LPARAM lParam);
 
+// Static Memory pointers to Platform & Engine.
+
+std::shared_ptr<Win32Platform> Win32_Platform;
+std::shared_ptr<Engine> Win32_Engine;
+
 // WIN32 PLATFORM IMPLEMENTATION
 
 bool Win32Platform::Win32_InitSubsystems()
 {
     m_debugger = std::make_shared<Win32PlatformDebugger>();
+    m_renderer = std::make_shared<Win32PlatformRenderer>();
     return true;
 }
 
@@ -31,7 +37,7 @@ bool Win32Platform::Win32_InitWindow()
     windowClass.style = CS_OWNDC;
     RegisterClass(&windowClass);
 
-    m_mainWindowHandle = CreateWindow(WIN32_WINDOW_CLASS_NAME, L"Model Viewer", WS_VISIBLE | WS_OVERLAPPEDWINDOW,
+    m_mainWindowHandle = CreateWindow(WIN32_WINDOW_CLASS_NAME, L"Model Viewer", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, m_processHandle, NULL);
 
     if (m_mainWindowHandle == NULL)
@@ -42,7 +48,7 @@ bool Win32Platform::Win32_InitWindow()
         return false;
     }
 
-    m_mainWindowDeviceContext = GetDC(m_mainWindowHandle);
+    ShowWindow(m_mainWindowHandle, 1);
 
     return true;
 }
@@ -57,6 +63,8 @@ void Win32Platform::Win32_Update()
         DispatchMessage(&message);
     }
 
+    m_renderer->Win32_TryRunRenderUpdate();
+
     m_debugger->Win32_FlushDebugLogQueue();
     
 }
@@ -65,19 +73,15 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
 {
     switch(messageType)
     {
+        case(WM_SIZE):
+            m_renderer->Win32_ResizeRendererDisplay(m_mainWindowHandle, LOWORD(lParam), HIWORD(lParam));
+            return true;
         case(WM_QUIT):
         case(WM_CLOSE):
             // Close Main window, triggering the whole app to shut down.
             m_debugger->DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
                 DebugLogMessage::Category::WARNING);
             Win32_CloseWindow();
-            return true;
-        case(WM_PAINT):
-            // Fill window with black
-            PAINTSTRUCT paint;
-            BeginPaint(m_mainWindowHandle, &paint);
-            FillRect(m_mainWindowDeviceContext, &paint.rcPaint, CreateSolidBrush(RGB(0, 0, 0)));
-            EndPaint(m_mainWindowHandle, &paint);
             return true;
         default:
             return false;
@@ -92,8 +96,8 @@ void Win32Platform::Win32_CloseWindow()
 
 void Win32PlatformDebugger::DisplayDebugMessage(DebugLogMessage&& message)
 {
-    std::lock_guard<std::mutex> queueLock(Mutex_DebugMessageQueue);
-    DebugMessageQueue.push(message);
+    std::lock_guard<std::mutex> queueLock(m_mutex_DebugMessageQueue);
+    m_debugMessageQueue.push(message);
 }
 
 void Win32PlatformDebugger::Win32_FlushDebugLogQueue()
@@ -103,10 +107,10 @@ void Win32PlatformDebugger::Win32_FlushDebugLogQueue()
     // be quite short-looped which, outside cases where the Engine prints many messages sequentially, means the queue will never get too long anyway.
     // If this were to change, I can think of multiple solutions: a single sort of "circular" buffer with a "consumption" and "production" cursor that can work in parallel, or
     // some way to interrupt the flushing process if something is waiting for the mutex to be unlocked.
-    std::lock_guard<std::mutex> messageQueueLock(Mutex_DebugMessageQueue);
-    while(!DebugMessageQueue.empty())
+    std::lock_guard<std::mutex> messageQueueLock(m_mutex_DebugMessageQueue);
+    while(!m_debugMessageQueue.empty())
     {
-        DebugLogMessage& message = DebugMessageQueue.front();
+        DebugLogMessage& message = m_debugMessageQueue.front();
 
         switch(message.LogCategory)
         {
@@ -130,17 +134,111 @@ void Win32PlatformDebugger::Win32_FlushDebugLogQueue()
         // Use standard out to output all messages. Always add a line break (triggering a flush) to each message.
         // #TODO(Marc): Add facility for multi-line and parameterized messages to be built on the Engine side.
         std::cout << message.LogMessage << "\n";
-        DebugMessageQueue.pop();
+        m_debugMessageQueue.pop();
     }
 
     // Reset text attribute to default.
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
 }
 
-// WIN32 MAIN ENTRY POINT & STATIC DATA
+void Win32PlatformRenderer::Win32_ResizeRendererDisplay(HWND windowHandle, uint16_t width, uint16_t height)
+{
+    m_displayWidth = width;
+    m_displayHeight = height;
 
-std::shared_ptr<Win32Platform> Win32_Platform;
-std::shared_ptr<Engine> Win32_Engine;
+    if (m_windowHandle != windowHandle)
+    {
+        ReleaseDC(m_windowHandle, m_windowDeviceContext);
+        m_windowHandle = windowHandle;
+        
+        m_windowDeviceContext = GetDC(windowHandle);
+        if (m_windowDeviceContext == NULL)
+        {
+            char buff[256];
+            sprintf(buff, "Arrrghh here's the error: %d", GetLastError());
+            Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage(buff);
+            return;
+        }
+    }
+}
+
+std::shared_ptr<PlatformRenderer::MemoryMapDrawer> Win32PlatformRenderer::AllocateFullDisplayDrawer()
+{
+    std::lock_guard<std::mutex> lock(m_mutex_RenderResources);
+
+    MemoryMapDrawerGDI newDrawerGDI = {};
+    BITMAPINFO bmpInfo = {};
+    {
+        bmpInfo.bmiHeader.biSize = sizeof(BITMAPINFO);
+        bmpInfo.bmiHeader.biWidth = m_displayWidth;
+        bmpInfo.bmiHeader.biHeight = -m_displayHeight;
+        bmpInfo.bmiHeader.biPlanes = 1;
+        bmpInfo.bmiHeader.biBitCount = 32;
+        bmpInfo.bmiHeader.biCompression = BI_RGB;
+    }
+
+    Pixel_RGBA* pixelBuffer;
+    newDrawerGDI.bmpInfo = bmpInfo;
+    newDrawerGDI.bmpHandle = CreateDIBSection(m_windowDeviceContext, &bmpInfo, DIB_RGB_COLORS, reinterpret_cast<void**>(&pixelBuffer), NULL, NULL);
+    
+    if (pixelBuffer == nullptr)
+    {
+        // DIB Section creation has failed ! Fail creation of Memory Map Drawer & return immediately.
+        // #TODO(Marc): Assert system.
+
+        return nullptr;
+    }
+
+    newDrawerGDI.DIBContext = CreateCompatibleDC(m_windowDeviceContext);
+    SelectObject(newDrawerGDI.DIBContext, newDrawerGDI.bmpHandle);
+
+    std::shared_ptr<PlatformRenderer::MemoryMapDrawer> newDrawer = 
+        std::make_shared<PlatformRenderer::MemoryMapDrawer>(m_displayWidth, m_displayHeight, 0, 0, pixelBuffer);
+
+    newDrawerGDI.drawer = newDrawer;
+
+    m_memoryMapDrawers.emplace_back(newDrawerGDI);
+    return newDrawer;
+}
+
+void Win32PlatformRenderer::PerformRenderUpdate()
+{
+    // Clear everything to black
+    if (0){
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(m_windowHandle, &ps);
+        FillRect(hdc, &ps.rcPaint, CreateSolidBrush(0x00000000));
+        EndPaint(m_windowHandle, &ps);
+    }
+
+    for(auto drawerIt = m_memoryMapDrawers.begin(); drawerIt != m_memoryMapDrawers.end();)
+    {
+        std::shared_ptr<PlatformRenderer::MemoryMapDrawer>& drawer = drawerIt->drawer;
+        if (drawer->IsReadyToDraw())
+        {
+            if (!BitBlt(m_windowDeviceContext, drawer->GetOffsetX(), drawer->GetOffsetY(), drawer->GetWidth(), drawer->GetHeight(),
+                drawerIt->DIBContext, 0, 0, SRCCOPY))
+                {
+
+                }
+        }
+
+        // Discard drawer if marked for discarding.
+        if (drawer->ShouldDiscard())
+        {
+            // Free DIB DC
+            SelectObject(drawerIt->DIBContext, NULL);
+            DeleteDC(drawerIt->DIBContext);
+
+            // Free Bitmap
+            DeleteObject(drawerIt->bmpHandle);
+
+            m_memoryMapDrawers.erase(drawerIt);
+        }
+    }
+}
+
+// WIN32 MAIN ENTRY POINT & THREADS
 
 // Threads & synchronization events.
 std::thread Win32_PlatformThread;
@@ -150,11 +248,12 @@ HANDLE Win32_PlatformInitCompleteEventHandle; // Set when Platform is done initi
 HANDLE Win32_EngineInitCompleteEventHandle; // Set when Engine is done initializing, whether it succeeded or failed.
 HANDLE Win32_EngineShutdownCompleteEventHandle; // Set when Engine is done shutting down.
 
-// Main thread function for the Engine thread.
+// Main thread function for the Win32 Engine thread.
 void Win32_EngineThreadFunc()
 {
     // Initialize Engine.
-    Win32_Engine->Initialize(std::dynamic_pointer_cast<PlatformDebugger>(Win32_Platform->Win32_GetDebugger()));
+    Win32_Engine->Initialize(   std::dynamic_pointer_cast<PlatformDebugger>(Win32_Platform->Win32_GetDebugger()),
+                                std::dynamic_pointer_cast<PlatformRenderer>(Win32_Platform->Win32_GetRenderer()));
 
     // Set Engine Init Complete event.
     SetEvent(Win32_EngineInitCompleteEventHandle);
@@ -164,7 +263,7 @@ void Win32_EngineThreadFunc()
     {
         // #TODO(Marc): Measure passage of time on the platform and give the Engine some idea of relationship between ticks
         // and real time so real-time features may exist.
-        Win32_Engine->Tick(0.01);
+        Win32_Engine->Update();
     }
 
     // Run Engine Shutdown Routine.
@@ -238,7 +337,6 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
     Win32_Engine = std::make_shared<Engine>();
 
     Win32_Platform->Win32_InitSubsystems();
-
     Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Initializing Platform...");
 
     // Create synchronization events.

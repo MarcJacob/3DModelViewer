@@ -12,6 +12,7 @@
 
 // Abstract platform services forward declaration.
 class PlatformDebugger;
+class PlatformRenderer;
 
 struct DebugLogMessage
 {
@@ -72,7 +73,12 @@ class Engine
     /// @param platform Shared pointer to the underlying platform debugger implementation.
     /// @Note(Marc): Is it wise to make each "service" a separate parameter here ? Perhaps a structure combining them together would work better. I don't know the total amount
     // of Service classes there will be yet so doing it might be premature.
-    void Initialize(std::shared_ptr<PlatformDebugger> platformDebugger);
+    void Initialize(std::shared_ptr<PlatformDebugger> platformDebugger,
+                    std::shared_ptr<PlatformRenderer> platformRenderer);
+
+    /// @brief Performs a full update of the Engine, taking into account incoming events, the passage of time, and
+    /// consequently updating render elements and the general state of the program as needed.
+    void Update();
 
     /// @brief Integrates the advancement of time for all time-related elements of the view,
     /// including animation and taking movement input into account.
@@ -93,6 +99,9 @@ class Engine
     // so that an Error shutdown is triggered automatically when logging an Error message.
     void TriggerShutdown(ShutdownReason Reason = ShutdownReason::REQUESTED) { m_shutdownReason = Reason; m_shouldShutdown = true; }
 
+    std::shared_ptr<PlatformDebugger> GetDebugger() const { return m_platformDebugger; }
+    std::shared_ptr<PlatformRenderer> GetRenderer() const { return m_platformRenderer; }
+
 private:
 
     // Whether the engine has been flagged for shutting down. This will trigger the shutting down of the Engine and then the whole program
@@ -105,10 +114,11 @@ private:
     // Current state of the engine's lifecycle.
     State m_state;
 
-    // Shared pointer to underlying Platform implementation.
-    // Should only ever be accessed directly by the Engine class which acts as an interface to the platform
-    // for the rest of the Engine Code.
+    // Shared pointer to underlying Platform Debugger implementation.
     std::shared_ptr<PlatformDebugger> m_platformDebugger;
+
+    // Shared pointer to underlying Platform Renderer implementation.
+    std::shared_ptr<PlatformRenderer> m_platformRenderer;
 };
 
 #endif // ENGINE_H

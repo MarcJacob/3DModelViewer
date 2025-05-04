@@ -26,8 +26,69 @@ public:
 
 private:
 
-    std::mutex Mutex_DebugMessageQueue;
-    std::queue<DebugLogMessage> DebugMessageQueue;
+    std::mutex m_mutex_DebugMessageQueue;
+    std::queue<DebugLogMessage> m_debugMessageQueue;
+};
+
+class Win32PlatformRenderer : public PlatformRenderer
+{
+public:
+
+    /// @brief Sets the size and other properties of the display the renderer works with.
+    /// @param windowHandle Handle to Win32 window to draw to.
+    /// @param width Width in pixels of display.
+    /// @param height Height in pixels of display.
+    void Win32_ResizeRendererDisplay(HWND windowHandle, uint16_t width, uint16_t height);
+
+    virtual std::shared_ptr<MemoryMapDrawer> AllocateFullDisplayDrawer() override;
+
+    // Win32 implementation of this function simply waits for the current render update to be done if needed, then sets the flag to start the next one ASAP.
+    virtual void RenderUpdate() override 
+    { 
+        std::lock_guard<std::mutex> lock(m_mutex_RenderResources); 
+        m_shouldUpdateRender = true; 
+    };
+
+    void Win32_TryRunRenderUpdate()
+    {
+        if (m_shouldUpdateRender)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex_RenderResources); 
+            PerformRenderUpdate();
+            m_shouldUpdateRender = false;
+        }
+    }
+
+private:
+
+    /// @brief Wrapper for a Memory Map Drawer appending GDI-specific elements to it for drawing to a window.
+    struct MemoryMapDrawerGDI
+    {
+        HDC DIBContext;
+        BITMAPINFO bmpInfo;
+        HBITMAP bmpHandle;
+
+        std::shared_ptr<MemoryMapDrawer> drawer;
+    };
+
+    void PerformRenderUpdate();
+
+    // Display data
+    HWND m_windowHandle;
+    HDC m_windowDeviceContext;
+
+    uint16_t m_displayWidth;
+    uint16_t m_displayHeight;
+
+    std::vector<MemoryMapDrawerGDI> m_memoryMapDrawers;
+
+    // When set, the platform should perform a full Render update.
+    std::atomic<bool> m_shouldUpdateRender;
+
+    // Locked by the platform when performing a Render update, or by the Engine when allocating a new render resource or
+    // sending commands to the command buffer.
+    std::mutex m_mutex_RenderResources;
+
 };
 
 /// @brief The Win32 Platform is meant to run on a Windows 10 and later OS-operated machine. It is centered around a Window
@@ -66,6 +127,7 @@ public:
     bool Win32_IsMainWindowActive() const { return m_mainWindowHandle != NULL; }
 
     std::shared_ptr<Win32PlatformDebugger> Win32_GetDebugger() const { return m_debugger; }
+    std::shared_ptr<Win32PlatformRenderer> Win32_GetRenderer() const { return m_renderer; }
 
 private:
 
@@ -75,13 +137,11 @@ private:
     // Handle to the main Window. NULL if inactive, any other value otherwise.
     HWND m_mainWindowHandle;
 
-    // Handle to WinGDI Device Context associated with Main Window for drawing.
-    HDC m_mainWindowDeviceContext;
-
     // Handle to parent process.
     HINSTANCE m_processHandle;
 
     std::shared_ptr<Win32PlatformDebugger> m_debugger;
+    std::shared_ptr<Win32PlatformRenderer> m_renderer;
 
 };
 
