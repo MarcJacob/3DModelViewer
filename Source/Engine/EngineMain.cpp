@@ -39,7 +39,7 @@ void Engine::Update()
         {
             for(int x = 100; x < 500; x++)
             {
-                pixelsBuffer[y * width + x].pixel = 0xFF0000FF;
+                pixelsBuffer[y * width + x].pixel = 0xFFFF0000;
             }
         }
 

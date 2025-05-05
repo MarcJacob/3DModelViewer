@@ -216,11 +216,8 @@ void Win32PlatformRenderer::PerformRenderUpdate()
         std::shared_ptr<PlatformRenderer::MemoryMapDrawer>& drawer = drawerIt->drawer;
         if (drawer->IsReadyToDraw())
         {
-            if (!BitBlt(m_windowDeviceContext, drawer->GetOffsetX(), drawer->GetOffsetY(), drawer->GetWidth(), drawer->GetHeight(),
-                drawerIt->DIBContext, 0, 0, SRCCOPY))
-                {
-
-                }
+            BitBlt(m_windowDeviceContext, drawer->GetOffsetX(), drawer->GetOffsetY(), drawer->GetWidth(), drawer->GetHeight(),
+                drawerIt->DIBContext, 0, 0, SRCCOPY);
         }
 
         // Discard drawer if marked for discarding.
