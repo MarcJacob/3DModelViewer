@@ -53,20 +53,24 @@ bool Win32Platform::Win32_InitWindow()
     return true;
 }
 
-void Win32Platform::Win32_Update()
+void Win32Platform::Win32_PollNextMessage()
 {
-    // Poll messages
     MSG message;
-    while(PeekMessage(&message, m_mainWindowHandle, 0, 0, PM_REMOVE) > 0)
+    if (PeekMessage(&message, m_mainWindowHandle, 0, 0, PM_REMOVE) > 0)
     {
         TranslateMessage(&message);
         DispatchMessage(&message);
     }
+}
 
+void Win32Platform::Win32_RendererUpdate()
+{
     m_renderer->Win32_TryRunRenderUpdate();
+}
 
+void Win32Platform::Win32_DebuggerUpdate()
+{
     m_debugger->Win32_FlushDebugLogQueue();
-    
 }
 
 bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, LPARAM lParam)
@@ -239,15 +243,20 @@ void Win32PlatformRenderer::PerformRenderUpdate()
 // WIN32 MAIN ENTRY POINT & THREADS
 
 // Threads & synchronization events.
-std::thread Win32_PlatformThread;
-std::thread Win32_EngineThread;
+std::thread Win32_PlatformMainThread;
+std::atomic<bool> Win32_PlatformShutdownFlag;
+
+std::thread Win32_PlatformRenderThread;
+std::thread Win32_PlatformDebuggingThread;
+
+std::thread Win32_EngineMainThread;
 
 HANDLE Win32_PlatformInitCompleteEventHandle; // Set when Platform is done initializing, whether it succeeded or failed.
 HANDLE Win32_EngineInitCompleteEventHandle; // Set when Engine is done initializing, whether it succeeded or failed.
 HANDLE Win32_EngineShutdownCompleteEventHandle; // Set when Engine is done shutting down.
 
 // Main thread function for the Win32 Engine thread.
-void Win32_EngineThreadFunc()
+void Win32_EngineThreadMainFunc()
 {
     // Initialize Engine.
     Win32_Engine->Initialize(   std::dynamic_pointer_cast<PlatformDebugger>(Win32_Platform->Win32_GetDebugger()),
@@ -285,26 +294,59 @@ LRESULT CALLBACK Win32_MsgProc(HWND window, UINT msgType, WPARAM wParam, LPARAM 
     return 0;
 }
 
+void Win32_PlatformThreadRenderFunc()
+{
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Win32 Render Thread has started.");
+
+    // Constantly attempt to run render updates on the platform.
+    // #NOTE(Marc): While I don't usually like active waiting like this (by "constantly retrying"), I think it's fine in this case because
+    // render updates should be ran at a very high rate compared to the time they take anyway.
+
+    while (!Win32_PlatformShutdownFlag)
+    {
+        Win32_Platform->Win32_RendererUpdate();
+    }
+
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Win32 Render Thread has ended.");
+}
+
+void Win32_PlatformThreadDebuggingFunc()
+{
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Win32 Debugger Thread has started.");
+
+    // #TOTHINK(Marc): It may be worth adding an extra Event object so that this thread does not constantly lock / unlock the debug message buffer mutex.
+    while (!Win32_PlatformShutdownFlag)
+    {
+        Win32_Platform->Win32_DebuggerUpdate();
+    }
+
+    Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Win32 Debugger Thread has ended.");
+}
+
 // Main thread function for the Platform thread.
-void Win32_PlatformThreadFunc()
+void Win32_PlatformThreadMainFunc()
 {
     // Initialize platform.
     Win32_Platform->Win32_InitWindow();
 
+    // Make sure Shutdown flag is set to false.
+    Win32_PlatformShutdownFlag = false;
+
+    // Spawn platform sub-threads
+    Win32_PlatformRenderThread = std::thread(Win32_PlatformThreadRenderFunc);
+    Win32_PlatformDebuggingThread = std::thread(Win32_PlatformThreadDebuggingFunc);
+
     // Whether Initialization succeeded or not, set the init event.
     SetEvent(Win32_PlatformInitCompleteEventHandle);
 
-    // Run platform update until the Engine shuts down or until specific events happen.
-    while(1)
+    // Wait for anything to trigger a shutdown.
+    // #TOTHINK(Marc): This could probably be done on the actual Main thread. But I'll make cross that bridge when I get to it, namely when
+    // I get around moving a lot of this Platform code to the Win32 Platform class (including the thread management itself).
+    while(Win32_Platform->Win32_IsMainWindowActive()
+            && Win32_Engine->GetState() != Engine::State::SHUTDOWN_COMPLETE)
     {
-        // Check stop conditions (Main Window closed for some reason or engine was shut down).
-        if (!Win32_Platform->Win32_IsMainWindowActive()
-        || Win32_Engine->GetState() == Engine::State::SHUTDOWN_COMPLETE)
-        {
-            break;
-        }
-
-        Win32_Platform->Win32_Update();
+        // Perform message polling on this thread as this is the thread that owns the window.
+        Win32_Platform->Win32_PollNextMessage();
     }
 
     // Platform has been shut down. If for some reason the Engine is not shutting down yet, make it do so immediately.
@@ -315,6 +357,11 @@ void Win32_PlatformThreadFunc()
 
     // Platform shut-down. Before doing anything on the platform, wait for the Engine to shut down.
     WaitForSingleObject(Win32_EngineShutdownCompleteEventHandle, INFINITE);
+
+    // Set the Platform Shutdown Flag so our child threads will stop, and wait for them to do so.
+    Win32_PlatformShutdownFlag = true;
+    Win32_PlatformRenderThread.join();
+    Win32_PlatformDebuggingThread.join();
 
     // END OF PLATFORM THREAD
 }
@@ -353,7 +400,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
     // PLATFORM STARTUP
     {
         // Start Platform Thread
-        Win32_PlatformThread = std::thread(Win32_PlatformThreadFunc);
+        Win32_PlatformMainThread = std::thread(Win32_PlatformThreadMainFunc);
         
         // Wait for Platform Thread to finish initialization.
         WaitForSingleObject(Win32_PlatformInitCompleteEventHandle, INFINITE);
@@ -374,7 +421,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
     // ENGINE STARTUP
     {
         // Start Engine Thread.
-        Win32_EngineThread = std::thread(Win32_EngineThreadFunc);
+        Win32_EngineMainThread = std::thread(Win32_EngineThreadMainFunc);
 
         // Wait for Engine initialization to complete.
         WaitForSingleObject(Win32_EngineInitCompleteEventHandle, INFINITE);
@@ -387,12 +434,14 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLi
         Win32_Platform->Win32_GetDebugger()->DisplayDebugMessage("Engine initialized and running !", DebugLogMessage::Category::SUCCESS);
     }
 
+    Sleep(2000);
+    PostMessage(Win32_Platform->m_mainWindowHandle, 7, 0, 0);
+
     // Join threads. At this point the process main thread will just be waiting for shutdown.
     // #TOTHINK(Marc): Is that smart ? Maybe running a separate thread for Platform isn't very useful.
     // Then again, threads are a very cheap and plentiful ressource on modern machines so it probably doesn't matter.
-    Win32_EngineThread.join();
-    Win32_PlatformThread.join();
-
+    Win32_EngineMainThread.join();
+    Win32_PlatformMainThread.join();
 PROGRAM_END:
 
     // Final flush of the Win32 Platform's Debug Logging Queue so any messages left (sent as part of shutdowns) will be displayed. 

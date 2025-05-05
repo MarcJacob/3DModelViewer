@@ -112,9 +112,15 @@ public:
     /// @return True if initialization was successful, false otherwise.
     bool Win32_InitWindow();
 
-    /// @brief Ran constantly as long as the platform is active, allowing it to poll for new input and trigger rendering updates.
-    /// NOTE(Marc): This means that Input polling and CPU Rendering will live on the same thread. 
-    void Win32_Update();
+    /// @brief Polls the next message for the platform main window. Blocks until a message is received. Only processes a single message when multiple are
+    /// received, so this should be called in a loop.
+    void Win32_PollNextMessage();
+
+    /// @brief Updates platform rendering.
+    void Win32_RendererUpdate();
+
+    /// @brief Updates platform debugging.
+    void Win32_DebuggerUpdate();
 
     /// @brief Processes a message received from the Platform's Main Window. Returns whether the message was handled. If not,
     /// the default handler for this message type will be called.
@@ -129,13 +135,14 @@ public:
     std::shared_ptr<Win32PlatformDebugger> Win32_GetDebugger() const { return m_debugger; }
     std::shared_ptr<Win32PlatformRenderer> Win32_GetRenderer() const { return m_renderer; }
 
+    // Handle to the main Window. NULL if inactive, any other value otherwise.
+    HWND m_mainWindowHandle;
 private:
 
     /// @brief Triggers the Window to close. It needs to be initialized again to reappear.
     void Win32_CloseWindow();
 
-    // Handle to the main Window. NULL if inactive, any other value otherwise.
-    HWND m_mainWindowHandle;
+    
 
     // Handle to parent process.
     HINSTANCE m_processHandle;
