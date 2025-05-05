@@ -57,7 +57,7 @@ void Win32Platform::Win32_Update()
 {
     // Poll messages
     MSG message;
-    while(PeekMessage(&message, m_mainWindowHandle, 0, 0, PM_REMOVE))
+    while(PeekMessage(&message, m_mainWindowHandle, 0, 0, PM_REMOVE) > 0)
     {
         TranslateMessage(&message);
         DispatchMessage(&message);
@@ -75,14 +75,14 @@ bool Win32Platform::Win32_ProcessWindowMessage(int messageType, WPARAM wParam, L
     {
         case(WM_SIZE):
             m_renderer->Win32_ResizeRendererDisplay(m_mainWindowHandle, LOWORD(lParam), HIWORD(lParam));
-            return true;
+            return false;
         case(WM_QUIT):
         case(WM_CLOSE):
             // Close Main window, triggering the whole app to shut down.
             m_debugger->DisplayDebugMessage("Win32 Platform Main Window received Close or Quit message ! Closing window and shutting down Engine...",
                 DebugLogMessage::Category::WARNING);
             Win32_CloseWindow();
-            return true;
+            return true; // Make sure nothing further happens. We need to handle the actual closing of the window ourselves.
         default:
             return false;
     }
@@ -203,15 +203,8 @@ std::shared_ptr<PlatformRenderer::MemoryMapDrawer> Win32PlatformRenderer::Alloca
 
 void Win32PlatformRenderer::PerformRenderUpdate()
 {
-    // Clear everything to black
-    if (0){
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(m_windowHandle, &ps);
-        FillRect(hdc, &ps.rcPaint, CreateSolidBrush(0x00000000));
-        EndPaint(m_windowHandle, &ps);
-    }
-
-    for(auto drawerIt = m_memoryMapDrawers.begin(); drawerIt != m_memoryMapDrawers.end();)
+    // Draw loop for Bitmap drawers
+    for(auto drawerIt = m_memoryMapDrawers.begin(); drawerIt != m_memoryMapDrawers.end(); drawerIt++)
     {
         std::shared_ptr<PlatformRenderer::MemoryMapDrawer>& drawer = drawerIt->drawer;
         if (drawer->IsReadyToDraw())
@@ -219,9 +212,13 @@ void Win32PlatformRenderer::PerformRenderUpdate()
             BitBlt(m_windowDeviceContext, drawer->GetOffsetX(), drawer->GetOffsetY(), drawer->GetWidth(), drawer->GetHeight(),
                 drawerIt->DIBContext, 0, 0, SRCCOPY);
         }
+    }
 
+    // Erase loop for discarded Bitmap drawers
+    for(auto drawerIt = m_memoryMapDrawers.begin(); drawerIt != m_memoryMapDrawers.end();)
+    {
         // Discard drawer if marked for discarding.
-        if (drawer->ShouldDiscard())
+        if (drawerIt->drawer->ShouldDiscard())
         {
             // Free DIB DC
             SelectObject(drawerIt->DIBContext, NULL);
@@ -230,7 +227,11 @@ void Win32PlatformRenderer::PerformRenderUpdate()
             // Free Bitmap
             DeleteObject(drawerIt->bmpHandle);
 
-            m_memoryMapDrawers.erase(drawerIt);
+            drawerIt = m_memoryMapDrawers.erase(drawerIt);
+        }
+        else
+        {
+            drawerIt++;
         }
     }
 }
